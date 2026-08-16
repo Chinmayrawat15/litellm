@@ -7,6 +7,7 @@ import ClassificationMethodConfig from "./ClassificationMethodConfig";
 import EscalationKeywords from "./EscalationKeywords";
 import KeywordTierRules, { KeywordTierRule } from "./KeywordTierRules";
 import SemanticKeywordMatching from "./SemanticKeywordMatching";
+import { TierModelParamsByTier } from "./complexity_router_tiers";
 
 const { Text } = Typography;
 
@@ -88,6 +89,7 @@ export type ComplexityTierLabels = Partial<Record<keyof ComplexityTiers, string>
 
 export interface ComplexityRouterConfigValue {
   tiers: ComplexityTiers;
+  tier_model_params?: TierModelParamsByTier;
   tier_labels?: ComplexityTierLabels;
   classifier_type: ClassifierType;
   classifier_llm_config?: ClassifierLLMConfig;
@@ -189,9 +191,41 @@ const ComplexityRouterConfig: React.FC<ComplexityRouterConfigProps> = ({
     }));
 
   const handleTierChange = (tier: keyof ComplexityTiers, models: string[]) => {
+    const selectedModels = new Set(models);
+    const existingParams = value.tier_model_params?.[tier];
+    const tierModelParams = existingParams
+      ? Object.fromEntries(Object.entries(existingParams).filter(([model]) => selectedModels.has(model)))
+      : undefined;
     onChange({
       ...value,
       tiers: { ...value.tiers, [tier]: models },
+      tier_model_params:
+        tierModelParams && Object.keys(tierModelParams).length > 0
+          ? { ...value.tier_model_params, [tier]: tierModelParams }
+          : Object.fromEntries(Object.entries(value.tier_model_params ?? {}).filter(([key]) => key !== tier)),
+    });
+  };
+
+  const handleReasoningEffortChange = (
+    tier: keyof ComplexityTiers,
+    model: string,
+    reasoningEffort: string | undefined,
+  ) => {
+    const tierModelParams = { ...(value.tier_model_params?.[tier] ?? {}) };
+    const existingParams = tierModelParams[model] ?? {};
+    const updatedParams = reasoningEffort
+      ? { ...existingParams, reasoning_effort: reasoningEffort }
+      : Object.fromEntries(Object.entries(existingParams).filter(([key]) => key !== "reasoning_effort"));
+    const updatedTierModelParams =
+      updatedParams && Object.keys(updatedParams).length > 0
+        ? { ...tierModelParams, [model]: updatedParams }
+        : Object.fromEntries(Object.entries(tierModelParams).filter(([key]) => key !== model));
+    onChange({
+      ...value,
+      tier_model_params:
+        Object.keys(updatedTierModelParams).length > 0
+          ? { ...value.tier_model_params, [tier]: updatedTierModelParams }
+          : Object.fromEntries(Object.entries(value.tier_model_params ?? {}).filter(([key]) => key !== tier)),
     });
   };
 
@@ -266,6 +300,34 @@ const ComplexityRouterConfig: React.FC<ComplexityRouterConfigProps> = ({
                   options={modelOptions}
                   status={tierMissing ? "error" : undefined}
                 />
+                {value.tiers[tier].map((model) => {
+                  const modelDetails = modelInfo.find((candidate) => candidate.model_group === model);
+                  if (!modelDetails?.supports_reasoning) return null;
+                  const currentEffort = value.tier_model_params?.[tier]?.[model]?.reasoning_effort;
+                  const effortOptions = [
+                    "minimal",
+                    "low",
+                    "medium",
+                    "high",
+                    ...(modelDetails.supports_xhigh_reasoning_effort ? ["xhigh"] : []),
+                  ].map((effort) => ({ value: effort, label: effort }));
+                  return (
+                    <div key={`${tier}-${model}`} className="mt-2">
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Reasoning effort for {model}
+                      </Text>
+                      <AntdSelect
+                        allowClear
+                        value={typeof currentEffort === "string" ? currentEffort : undefined}
+                        placeholder="Reasoning effort (optional)"
+                        options={effortOptions}
+                        onChange={(effort: string | undefined) => handleReasoningEffortChange(tier, model, effort)}
+                        style={{ width: "100%" }}
+                        aria-label={`Reasoning effort for ${model}`}
+                      />
+                    </div>
+                  );
+                })}
                 {value.tiers[tier].length > 1 && (
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     Multiple models selected — the router randomly picks among them per request (or Thompson-samples

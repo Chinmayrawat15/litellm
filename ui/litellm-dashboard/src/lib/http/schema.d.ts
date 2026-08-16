@@ -29044,6 +29044,11 @@ export interface components {
              * @default false
              */
             supports_web_search: boolean;
+            /**
+             * Supports Xhigh Reasoning Effort
+             * @default false
+             */
+            supports_xhigh_reasoning_effort: boolean;
             /** Tpm */
             tpm?: number | null;
         };

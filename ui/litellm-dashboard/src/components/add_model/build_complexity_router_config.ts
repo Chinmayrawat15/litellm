@@ -11,6 +11,7 @@ import {
   TIER_DESCRIPTIONS,
   effectiveTierLabel,
 } from "./ComplexityRouterConfig";
+import { serializeTierConfig, type TierModelParamsByTier } from "./complexity_router_tiers";
 
 /**
  * Drop an empty system_prompt so the payload carries an override only when there is one. The
@@ -38,6 +39,7 @@ export const normalizeClassifierLlmConfig = ({
 
 export interface BuildComplexityRouterConfigParams {
   tiers: ComplexityTiers;
+  tierModelParams?: TierModelParamsByTier;
   tierLabels: ComplexityTierLabels | undefined;
   classifierType: ClassifierType;
   classifierLlmConfig: ClassifierLLMConfig | undefined;
@@ -61,7 +63,7 @@ export interface BuildComplexityRouterConfigParams {
 }
 
 export interface ComplexityRouterConfigPayload {
-  tiers: ComplexityTiers;
+  tiers: Record<string, unknown>;
   tier_labels?: ComplexityTierLabels;
   classifier_type: ClassifierType;
   classifier_llm_config?: ClassifierLLMConfig;
@@ -147,6 +149,7 @@ export const getSemanticConfigError = ({
 
 export const buildComplexityRouterConfig = ({
   tiers,
+  tierModelParams,
   tierLabels,
   classifierType,
   classifierLlmConfig,
@@ -173,7 +176,7 @@ export const buildComplexityRouterConfig = ({
   const cleanedTierLabels = serializeTierLabels(tierLabels);
 
   return {
-    tiers,
+    tiers: serializeTierConfig(tiers, tierModelParams),
     ...(cleanedTierLabels && { tier_labels: cleanedTierLabels }),
     classifier_type: classifierType,
     ...(classifierType === "llm" &&

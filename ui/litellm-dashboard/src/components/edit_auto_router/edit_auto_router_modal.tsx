@@ -4,7 +4,7 @@ import { TextInput } from "@tremor/react";
 import { modelAvailableCall, modelPatchUpdateCall } from "../networking";
 import { fetchAvailableModels, ModelGroup } from "@/components/llm_calls/fetch_models";
 import RouterConfigBuilder from "../add_model/RouterConfigBuilder";
-import { normalizeTierModels } from "../add_model/complexity_router_tiers";
+import { extractTierModelParams, normalizeTierModels, serializeTierConfig } from "../add_model/complexity_router_tiers";
 import { isComplexityRouter } from "../add_model/auto_router_strategies";
 import {
   getKeywordTierRulesError,
@@ -108,7 +108,7 @@ export const buildUpdatedComplexityRouterConfig = (
 
   return {
     ...preservedConfig,
-    tiers: value.tiers,
+    tiers: serializeTierConfig(value.tiers, value.tier_model_params),
     ...(serializedTierLabels && { tier_labels: serializedTierLabels }),
     classifier_type: value.classifier_type,
     ...(value.classifier_type === "llm" && value.classifier_llm_config
@@ -243,6 +243,12 @@ const EditAutoRouterModal: React.FC<EditAutoRouterModalProps> = ({
             COMPLEX: normalizeTierModels(parsedConfig.tiers?.COMPLEX),
             REASONING: normalizeTierModels(parsedConfig.tiers?.REASONING),
           },
+          tier_model_params: Object.fromEntries(
+            ["SIMPLE", "MEDIUM", "COMPLEX", "REASONING"].map((tier) => [
+              tier,
+              extractTierModelParams(parsedConfig.tiers?.[tier]),
+            ]),
+          ),
           tier_labels: hydrateTierLabels(parsedConfig.tier_labels),
           classifier_type: parsedConfig.classifier_type || "heuristic",
           classifier_llm_config: parsedConfig.classifier_llm_config,
