@@ -678,16 +678,16 @@ class ComplexityRouterConfig(BaseModel):
         normalized_tiers: Final = MappingProxyType(
             {tier: normalized for tier, (normalized, _) in normalized_entries.items()}
         )
-        incoming_configs: Final = (
-            tuple(
-                (
-                    tier,
-                    tuple(ComplexityTierModel.model_validate(entry) for entry in entries),
-                )
-                for tier, entries in existing_configs.items()
+        incoming_params: Final = (
+            MappingProxyType(
+                {
+                    (tier, entry.model_name): entry.litellm_params
+                    for tier, entries in existing_configs.items()
+                    for entry in (ComplexityTierModel.model_validate(item) for item in entries)
+                }
             )
             if isinstance(existing_configs, dict)
-            else ()
+            else MappingProxyType({})
         )
         tier_model_configs: Final = MappingProxyType(
             {
@@ -695,15 +695,7 @@ class ComplexityRouterConfig(BaseModel):
                     entry.model_copy(
                         update=MappingProxyType(
                             {
-                                "litellm_params": next(
-                                    (
-                                        incoming.litellm_params
-                                        for incoming_tier, incoming_entries in incoming_configs
-                                        for incoming in incoming_entries
-                                        if incoming_tier == tier and incoming.model_name == entry.model_name
-                                    ),
-                                    entry.litellm_params,
-                                )
+                                "litellm_params": incoming_params.get((tier, entry.model_name), entry.litellm_params),
                             }
                         )
                     )
@@ -712,13 +704,11 @@ class ComplexityRouterConfig(BaseModel):
                 for tier, (_, entries) in normalized_entries.items()
             }
         )
-        return MappingProxyType(
-            {
-                **value,
-                "tiers": normalized_tiers,
-                "tier_model_configs": tier_model_configs,
-            }
-        )
+        return {  # mutable-ok: Pydantic before-validator requires a concrete mapping
+            **value,
+            "tiers": normalized_tiers,
+            "tier_model_configs": tier_model_configs,
+        }
 
     @field_validator("escalation_keywords")
     @classmethod

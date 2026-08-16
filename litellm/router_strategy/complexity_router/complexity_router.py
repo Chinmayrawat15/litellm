@@ -503,6 +503,35 @@ class ClassificationOutcome(NamedTuple):
     classifier_cost: float | None = None
 
 
+class _SessionAffinityPin(NamedTuple):
+    model: str
+    tier: ComplexityTier | None
+
+
+def _parse_session_affinity_pin(value: object) -> _SessionAffinityPin | None:
+    if isinstance(value, str):
+        return _SessionAffinityPin(model=value, tier=None)
+    parts: Final[tuple[object, object] | None] = (
+        (value.get("model"), value.get("tier"))
+        if isinstance(value, Mapping)
+        else (value[0], value[1])
+        if isinstance(value, (list, tuple)) and len(value) == 2
+        else None
+    )
+    if parts is None:
+        return None
+    model, tier_value = parts
+    if not isinstance(model, str):
+        return None
+    tier: Final = ComplexityTier(tier_value) if isinstance(tier_value, str) else None
+    return _SessionAffinityPin(model=model, tier=tier)
+
+
+def _session_affinity_cache_value(model: str, tier: ComplexityTier | str | None) -> Mapping[str, str | None]:
+    tier_value: Final = tier.value if isinstance(tier, ComplexityTier) else tier
+    return {"model": model, "tier": tier_value}  # mutable-ok: cache requires JSON mapping
+
+
 class ComplexityRouter(CustomLogger):
     """
     Complexity router that classifies requests and routes to appropriate models.
@@ -1721,24 +1750,9 @@ class ComplexityRouter(CustomLogger):
 
         if cache_key is not None:
             pinned_value: Final = await self.litellm_router_instance.cache.async_get_cache(key=cache_key)
-            pinned_model: Final = (
-                pinned_value.get("model")
-                if isinstance(pinned_value, Mapping)
-                else pinned_value[0]
-                if isinstance(pinned_value, tuple) and len(pinned_value) == 2
-                else pinned_value
-                if isinstance(pinned_value, str)
-                else None
-            )
-            pinned_tier: Final = (
-                ComplexityTier(pinned_value["tier"])
-                if isinstance(pinned_value, Mapping) and isinstance(pinned_value.get("tier"), str)
-                else ComplexityTier(pinned_value[1])
-                if isinstance(pinned_value, tuple) and len(pinned_value) == 2 and isinstance(pinned_value[1], str)
-                else None
-            )
-            if isinstance(pinned_model, str):
-                routed_model: str | None = pinned_model
+            pinned_pin: Final = _parse_session_affinity_pin(pinned_value)
+            if pinned_pin is not None:
+                routed_model: str | None = pinned_pin.model
                 pin_escalation_keyword: str | None = None
                 if self.escalation_keywords:
                     user_message: Final = (
@@ -1747,26 +1761,18 @@ class ComplexityRouter(CustomLogger):
                     if user_message is not None:
                         pin_escalation_keyword = self._matched_escalation_keyword(user_message)
                     if pin_escalation_keyword is not None:
-                        routed_model = self._escalated_pin(pinned_model)
+                        routed_model = self._escalated_pin(pinned_pin.model)
                 if routed_model is not None:
+                    resolved_pin_tier: Final = (
+                        pinned_pin.tier
+                        if routed_model == pinned_pin.model and pinned_pin.tier is not None
+                        else self._tier_for_model(routed_model)
+                    )
                     # Refresh the TTL on every hit so an active session doesn't lose its
                     # pin mid-conversation just because it outlives the original write.
                     await self.litellm_router_instance.cache.async_set_cache(
                         key=cache_key,
-                        value=(
-                            pinned_value
-                            if isinstance(pinned_value, str)
-                            else (
-                                routed_model,
-                                (
-                                    pinned_tier.value
-                                    if routed_model == pinned_model and pinned_tier is not None
-                                    else self._tier_for_model(routed_model).value
-                                    if self._tier_for_model(routed_model) is not None
-                                    else None
-                                ),
-                            )
-                        ),
+                        value=_session_affinity_cache_value(routed_model, resolved_pin_tier),
                         ttl=self.config.session_affinity_ttl_seconds,
                     )
                     if self.config.adaptive:
@@ -1777,13 +1783,8 @@ class ComplexityRouter(CustomLogger):
                         kwargs_metadata: Final = request_kwargs.setdefault("metadata", {})
                         if isinstance(kwargs_metadata, dict):
                             kwargs_metadata[ADAPTIVE_ROUTER_CHOSEN_MODEL_KEY] = routed_model
-                    escalated: Final = routed_model != pinned_model
+                    escalated: Final = routed_model != pinned_pin.model
                     cause: RoutingDecisionCause = "session_affinity_escalation" if escalated else "session_affinity_pin"
-                    resolved_pin_tier: Final = (
-                        pinned_tier
-                        if routed_model == pinned_model and pinned_tier is not None
-                        else self._tier_for_model(routed_model)
-                    )
                     verbose_router_logger.info(
                         "ComplexityRouter: routing decision cause=%s, routed_model=%s", cause, routed_model
                     )
@@ -1818,7 +1819,7 @@ class ComplexityRouter(CustomLogger):
         if cache_key is not None and response is not None and _decision_is_pinnable(response.routing_decision):
             await self.litellm_router_instance.cache.async_set_cache(
                 key=cache_key,
-                value=(
+                value=_session_affinity_cache_value(
                     response.model,
                     response.routing_decision.get("tier") if response.routing_decision is not None else None,
                 ),
