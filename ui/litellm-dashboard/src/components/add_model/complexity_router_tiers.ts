@@ -60,7 +60,7 @@ export const serializeTierModels = (
   return entries;
 };
 
-export type SerializedTierConfig = Partial<Record<keyof ComplexityTiers, SerializedTierModel[]>>;
+export type SerializedTierConfig = Record<keyof ComplexityTiers, SerializedTierModel[]>;
 
 export const serializeTierConfig = (
   tiers: Partial<ComplexityTiers>,
