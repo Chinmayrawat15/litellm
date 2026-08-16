@@ -217,7 +217,7 @@ const ComplexityRouterConfig: React.FC<ComplexityRouterConfigProps> = ({
       ? { ...existingParams, reasoning_effort: reasoningEffort }
       : Object.fromEntries(Object.entries(existingParams).filter(([key]) => key !== "reasoning_effort"));
     const updatedTierModelParams =
-      updatedParams && Object.keys(updatedParams).length > 0
+      Object.keys(updatedParams).length > 0
         ? { ...tierModelParams, [model]: updatedParams }
         : Object.fromEntries(Object.entries(tierModelParams).filter(([key]) => key !== model));
     onChange({
@@ -299,6 +299,7 @@ const ComplexityRouterConfig: React.FC<ComplexityRouterConfigProps> = ({
                   style={{ width: "100%" }}
                   options={modelOptions}
                   status={tierMissing ? "error" : undefined}
+                  aria-label={`Models for ${label} tier`}
                 />
                 {value.tiers[tier].map((model) => {
                   const modelDetails = modelInfo.find((candidate) => candidate.model_group === model);

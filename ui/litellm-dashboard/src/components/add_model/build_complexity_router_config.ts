@@ -11,7 +11,7 @@ import {
   TIER_DESCRIPTIONS,
   effectiveTierLabel,
 } from "./ComplexityRouterConfig";
-import { serializeTierConfig, type TierModelParamsByTier } from "./complexity_router_tiers";
+import { serializeTierConfig, type SerializedTierConfig, type TierModelParamsByTier } from "./complexity_router_tiers";
 
 /**
  * Drop an empty system_prompt so the payload carries an override only when there is one. The
@@ -63,7 +63,7 @@ export interface BuildComplexityRouterConfigParams {
 }
 
 export interface ComplexityRouterConfigPayload {
-  tiers: Record<string, unknown>;
+  tiers: SerializedTierConfig;
   tier_labels?: ComplexityTierLabels;
   classifier_type: ClassifierType;
   classifier_llm_config?: ClassifierLLMConfig;

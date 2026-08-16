@@ -244,10 +244,10 @@ const EditAutoRouterModal: React.FC<EditAutoRouterModalProps> = ({
             REASONING: normalizeTierModels(parsedConfig.tiers?.REASONING),
           },
           tier_model_params: Object.fromEntries(
-            ["SIMPLE", "MEDIUM", "COMPLEX", "REASONING"].map((tier) => [
-              tier,
-              extractTierModelParams(parsedConfig.tiers?.[tier]),
-            ]),
+            ["SIMPLE", "MEDIUM", "COMPLEX", "REASONING"].flatMap((tier) => {
+              const params = extractTierModelParams(parsedConfig.tiers?.[tier]);
+              return Object.keys(params).length > 0 ? [[tier, params]] : [];
+            }),
           ),
           tier_labels: hydrateTierLabels(parsedConfig.tier_labels),
           classifier_type: parsedConfig.classifier_type || "heuristic",
